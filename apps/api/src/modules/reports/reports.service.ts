@@ -52,8 +52,8 @@ export class ReportsService {
       const topic = response.question.topic;
       byTopic.set(topic, (byTopic.get(topic) ?? true) && response.wasCorrect);
     }
-    const awarenessMap = TOPIC_ORDER.filter((topic) => byTopic.has(topic)).map(
-      (topic) => ({
+    const awarenessMap = TOPIC_ORDER.filter((topic: string) => byTopic.has(topic)).map(
+      (topic: string) => ({
         topic,
         status: byTopic.get(topic) ? ("strong" as const) : ("explore" as const),
       }),

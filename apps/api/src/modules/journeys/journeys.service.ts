@@ -27,7 +27,7 @@ export class JourneysService {
     return {
       slug: version.journey.slug,
       name: version.journey.name,
-      languages: version.languages.map((l) => ({
+      languages: version.languages.map((l: any) => ({
         code: l.code,
         name: l.name,
         isDefault: l.isDefault,

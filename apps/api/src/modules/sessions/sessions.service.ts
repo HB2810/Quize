@@ -326,7 +326,7 @@ export class SessionsService {
     const question =
       candidates.length === 1
         ? candidates[0]
-        : candidates.find((q) =>
+        : candidates.find((q: any) =>
             q.questionKey.endsWith(questionVariantSuffix(context.gender)),
           );
     if (!question) {
@@ -351,7 +351,7 @@ export class SessionsService {
         message: "The session has moved on. Refresh to continue.",
       });
     }
-    const option = question.options.find((o) => o.optionKey === body.optionKey);
+    const option = question.options.find((o: any) => o.optionKey === body.optionKey);
     if (!option) {
       throw new BadRequestException({
         code: "INVALID_OPTION",
@@ -360,7 +360,7 @@ export class SessionsService {
     }
 
     const translation = question.translations[0];
-    const correctOption = question.options.find((o) => o.isCorrect);
+    const correctOption = question.options.find((o: any) => o.isCorrect);
     const evaluation: AnswerEvaluation = {
       wasCorrect: option.isCorrect,
       correctOptionKey: correctOption?.optionKey ?? "",
@@ -443,7 +443,7 @@ export class SessionsService {
           body: String(copy?.body ?? ""),
           prompt: String(copy?.prompt ?? ""),
           cta: String(copy?.cta ?? "Continue"),
-          options: session.journeyVersion.languages.map((l) => ({
+          options: session.journeyVersion.languages.map((l: any) => ({
             value: l.code,
             label: l.name,
           })),
@@ -473,14 +473,14 @@ export class SessionsService {
           progress: {
             current: config.slot ?? 0,
             total: this.flowOf(session).steps.filter(
-              (s) => s.type === "QUESTION",
+              (s: any) => s.type === "QUESTION",
             ).length,
           },
           questionKey: question.questionKey,
           topic: question.topic,
           text: translation?.questionText ?? "",
           // Options WITHOUT correctness — never sent pre-submission.
-          options: question.options.map((o) => ({
+          options: question.options.map((o: any) => ({
             key: o.optionKey,
             label: o.translations[0]?.text ?? "",
           })),
