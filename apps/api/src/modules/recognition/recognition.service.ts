@@ -16,7 +16,10 @@ import type {
   DisplayNameChoiceValue,
   RecognitionState,
 } from "@stavya/contracts";
-import type { DisplayNameChoice, Recognition } from "@prisma/client";
+import type { Prisma } from "@prisma/client";
+
+type DisplayNameChoice = "FIRST_NAME" | "INITIAL" | "ANONYMOUS";
+type Recognition = Prisma.RecognitionGetPayload<{}>;
 import { PrismaService } from "../../prisma/prisma.service";
 import type { Env } from "../../config/env.schema";
 import type { SessionScores } from "../journeys/journey-config.types";
@@ -291,7 +294,7 @@ export class RecognitionService implements OnModuleInit {
       },
     });
     return {
-      entries: rows.map((row) => ({
+      entries: rows.map((row: any) => ({
         id: row.id,
         displayName: row.displayName ?? "A Stavya Champion",
         journeyName: row.session.journeyVersion.journey.name,
