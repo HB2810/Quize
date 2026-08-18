@@ -1,0 +1,23 @@
+{
+  "name": "stavya-awareness-platform",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Stavya Spine Hospital — interactive health-awareness journey platform",
+  "packageManager": "pnpm@11.15.1",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "lint": "turbo lint",
+    "test": "turbo test",
+    "typecheck": "turbo typecheck",
+    "db:clean": "pnpm --filter @stavya/api db:clean",
+    "format": "prettier --write \"**/*.{ts,tsx,md,json}\""
+  },
+  "devDependencies": {
+    "prettier": "^3.4.2",
+    "turbo": "^2.5.0"
+  }
+}

@@ -1,0 +1,29 @@
+# Dependencies
+node_modules/
+
+# Builds
+dist/
+.next/
+out/
+.turbo/
+
+# Environment — never commit secrets
+.env
+.env.*
+!.env.example
+
+# Prisma generated client artifacts
+apps/api/src/generated/
+
+# Private media storage (selfies) — never committed
+storage/
+apps/api/storage/
+
+# Logs & OS
+*.log
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/

@@ -1,0 +1,23 @@
+name: stavya-awareness-platform
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: stavya-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: stavya
+      POSTGRES_PASSWORD: stavya_dev_password # dev only — production uses injected secrets
+      POSTGRES_DB: stavya_awareness
+    ports:
+      - "5432:5432"
+    volumes:
+      - stavya_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stavya -d stavya_awareness"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  stavya_pgdata:

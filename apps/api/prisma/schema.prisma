@@ -1,0 +1,383 @@
+// ============================================================
+// Stavya Awareness Platform — database schema (Foundation 2)
+//
+// Principles:
+//  - Journeys are versioned content: all content hangs off
+//    JourneyVersion. A PUBLISHED version is immutable (enforced
+//    in the service layer + audit logged) so historical sessions
+//    stay reproducible.
+//  - Participant is the ONLY table containing PII. Everything
+//    else links by id, so retention/deletion can wipe contact
+//    data without destroying anonymized results.
+//  - Correctness lives server-side only (AnswerOption.isCorrect);
+//    Response.wasCorrect is the evaluation snapshot.
+//  - AnswerOption.nextQuestionId is branching-ready but unused
+//    in the Healthy Bones beta (linear pathway sequence).
+//  - Structurally journey-specific config (flow, scoring, report,
+//    eligibility, demographic context) is JSONB validated by Zod
+//    schemas in @stavya/contracts.
+// ============================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Enums ----------
+
+enum JourneyStatus {
+  DRAFT
+  REVIEW
+  PUBLISHED
+  ARCHIVED
+}
+
+enum SessionState {
+  IN_PROGRESS
+  COMPLETED
+  EXPIRED
+  ABANDONED
+}
+
+enum ConsentType {
+  COMMUNICATION
+  PUBLIC_RECOGNITION
+}
+
+enum RecognitionStatus {
+  PENDING
+  ELIGIBLE
+  COMPLETED
+  DECLINED
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  CONTENT_EDITOR
+  VIEWER
+}
+
+enum DisplayNameChoice {
+  FIRST_NAME
+  INITIAL
+  ANONYMOUS
+}
+
+// ---------- Content domain ----------
+
+model Journey {
+  id        String   @id @default(cuid())
+  slug      String   @unique // e.g. "healthy-bones" → /j/healthy-bones
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  versions JourneyVersion[]
+}
+
+model JourneyVersion {
+  id            String        @id @default(cuid())
+  journeyId     String
+  versionNumber Int
+  status        JourneyStatus @default(DRAFT)
+
+  // Ordered step sequence rendered via the step-type registry
+  // (LANGUAGE_SELECT, DEMOGRAPHIC, INTRO, QUESTION, ...).
+  flowConfig Json
+
+  // e.g. { "strategy": "correct-count", "totalQuestions": 6 }
+  scoringConfig Json
+
+  // Report template: sections + slots filled from session data.
+  reportTemplate Json
+
+  // Sharing engine config: card template copy, branding, caption and
+  // metadata templates. Journey-configurable — never hard-coded.
+  shareConfig Json?
+
+  publishedAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  journey   Journey           @relation(fields: [journeyId], references: [id], onDelete: Cascade)
+  languages JourneyLanguage[]
+  pathways  Pathway[]
+  questions Question[]
+  sessions  Session[]
+
+  @@unique([journeyId, versionNumber])
+  @@index([journeyId, status])
+}
+
+model JourneyLanguage {
+  id               String  @id @default(cuid())
+  journeyVersionId String
+  code             String // BCP-47-ish: "en", "hi", "gu"
+  name             String // display name in its own language
+  isDefault        Boolean @default(false)
+
+  journeyVersion JourneyVersion @relation(fields: [journeyVersionId], references: [id], onDelete: Cascade)
+
+  @@unique([journeyVersionId, code])
+}
+
+model Pathway {
+  id               String @id @default(cuid())
+  journeyVersionId String
+  key              String // e.g. "adult-female", "neutral"
+  name             String
+
+  // Demographic criteria mapping context → pathway, including the
+  // neutral "Prefer not to say" route. Shape defined in contracts.
+  eligibility Json
+
+  journeyVersion JourneyVersion @relation(fields: [journeyVersionId], references: [id], onDelete: Cascade)
+  questions      Question[]
+  sessions       Session[]
+
+  @@unique([journeyVersionId, key])
+}
+
+model Question {
+  id               String  @id @default(cuid())
+  journeyVersionId String
+  pathwayId        String
+  questionKey      String // stable across versions, e.g. "HB-Q1" — enables v1 vs v2 analytics
+  sequence         Int
+  topic            String
+  isActive         Boolean @default(true)
+
+  journeyVersion JourneyVersion        @relation(fields: [journeyVersionId], references: [id], onDelete: Cascade)
+  pathway        Pathway               @relation(fields: [pathwayId], references: [id], onDelete: Cascade)
+  translations   QuestionTranslation[]
+  options        AnswerOption[]
+  responses      Response[]
+  branchSources  AnswerOption[]        @relation("OptionBranchTarget")
+
+  @@unique([pathwayId, questionKey])
+  @@index([pathwayId, sequence])
+}
+
+model QuestionTranslation {
+  id         String @id @default(cuid())
+  questionId String
+  language   String
+
+  questionText      String
+  correctFeedback   String
+  incorrectFeedback String
+  ahaMoment         String
+  takeaway          String
+
+  question Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, language])
+}
+
+model AnswerOption {
+  id         String  @id @default(cuid())
+  questionId String
+  optionKey  String // stable, e.g. "A", "B"
+  sequence   Int
+  isCorrect  Boolean // never serialized to the browser pre-submission
+
+  // Future adaptive branching; NULL in beta (linear sequence).
+  nextQuestionId String?
+
+  question     Question                  @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  nextQuestion Question?                 @relation("OptionBranchTarget", fields: [nextQuestionId], references: [id], onDelete: SetNull)
+  translations AnswerOptionTranslation[]
+  responses    Response[]
+
+  @@unique([questionId, optionKey])
+}
+
+model AnswerOptionTranslation {
+  id       String @id @default(cuid())
+  optionId String
+  language String
+  text     String
+
+  option AnswerOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+
+  @@unique([optionId, language])
+}
+
+// ---------- Participation domain ----------
+
+model Session {
+  id               String  @id @default(cuid()) // unguessable — doubles as the bearer capability token
+  journeyVersionId String
+  pathwayId        String?
+  language         String?
+
+  // Journey-agnostic demographic/context selections,
+  // e.g. { "ageRange": "40-60", "gender": "female" }.
+  context Json?
+
+  state            SessionState @default(IN_PROGRESS)
+  currentStepIndex Int          @default(0)
+
+  // Scoring engine snapshot at completion,
+  // e.g. { "awareness": 5, "discovery": 1 }.
+  scores Json?
+
+  participantId  String?
+  startedAt      DateTime  @default(now())
+  lastActivityAt DateTime  @updatedAt
+  completedAt    DateTime?
+  expiresAt      DateTime?
+
+  journeyVersion  JourneyVersion   @relation(fields: [journeyVersionId], references: [id])
+  pathway         Pathway?         @relation(fields: [pathwayId], references: [id])
+  participant     Participant?     @relation(fields: [participantId], references: [id], onDelete: SetNull)
+  responses       Response[]
+  recognition     Recognition?
+  consents        Consent[]
+  analyticsEvents AnalyticsEvent[]
+  shareResult     ShareResult?
+
+  @@index([journeyVersionId, state])
+  @@index([participantId])
+}
+
+model Response {
+  id         String   @id @default(cuid())
+  sessionId  String
+  questionId String
+  optionId   String
+  wasCorrect Boolean // server-side evaluation snapshot
+  answeredAt DateTime @default(now())
+
+  session  Session      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  question Question     @relation(fields: [questionId], references: [id])
+  option   AnswerOption @relation(fields: [optionId], references: [id])
+
+  // Duplicate submission is impossible at the database level.
+  @@unique([sessionId, questionId])
+}
+
+model Participant {
+  // The ONLY table containing PII. Deleting a row anonymizes the
+  // linked sessions (participantId → NULL) without destroying results.
+  id        String   @id @default(cuid())
+  name      String
+  mobile    String?
+  email     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  sessions Session[]
+  consents Consent[]
+}
+
+model Consent {
+  id            String      @id @default(cuid())
+  participantId String
+  sessionId     String?
+  type          ConsentType
+  granted       Boolean
+
+  // Version of the consent wording shown — auditable.
+  wordingVersion String
+  respondedAt    DateTime @default(now())
+
+  participant Participant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  session     Session?    @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+
+  @@index([participantId, type])
+}
+
+model Recognition {
+  id        String            @id @default(cuid())
+  sessionId String            @unique
+  eligible  Boolean           @default(false)
+  status    RecognitionStatus @default(PENDING)
+
+  // The ONLY name form that may ever appear publicly, derived
+  // server-side from the participant's chosen display style.
+  displayChoice DisplayNameChoice?
+  displayName   String?
+
+  // Selfie file in PRIVATE storage (never a public static path);
+  // served only through controlled endpoints after publication.
+  selfiePath  String?
+  publishedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([status, publishedAt])
+}
+
+model ShareResult {
+  // Created ONLY by an explicit participant share action — never
+  // automatically. publicId is the only identifier that ever appears
+  // in a URL; it is non-guessable and reveals nothing.
+  id       String @id @default(cuid())
+  publicId String @unique
+
+  sessionId        String @unique
+  journeyVersionId String
+  journeySlug      String
+
+  // Minimal approved-for-sharing snapshot, e.g.
+  // { journeyName, score, total, profile }. Never PII, never answers.
+  payload Json
+
+  createdAt DateTime @default(now())
+
+  session Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([journeySlug])
+}
+
+// ---------- Platform domain ----------
+
+model AnalyticsEvent {
+  id               String  @id @default(cuid())
+  sessionId        String?
+  journeyVersionId String?
+  eventType        String // "journey_started", "question_answered", ...
+  properties       Json? // never contains PII
+
+  createdAt DateTime @default(now())
+
+  session Session? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+
+  @@index([eventType, createdAt])
+  @@index([journeyVersionId, createdAt])
+}
+
+model AdminUser {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  role         AdminRole @default(CONTENT_EDITOR)
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  auditLogs AuditLog[]
+}
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  adminUserId String
+  action      String // "journey_version.publish", "question.update", ...
+  entityType  String
+  entityId    String
+  diff        Json?
+  createdAt   DateTime @default(now())
+
+  adminUser AdminUser @relation(fields: [adminUserId], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([adminUserId, createdAt])
+}
