@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { RecognitionStateSchema } from "./recognition.js";
+import { RecognitionStateSchema } from "./recognition";
 
 /**
  * Step payloads — what the server says the participant sees next.

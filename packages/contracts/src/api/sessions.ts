@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { StepPayloadSchema } from "./steps.js";
+import { StepPayloadSchema } from "./steps";
 
 export const CreateSessionRequestSchema = z.object({
   journeySlug: z
