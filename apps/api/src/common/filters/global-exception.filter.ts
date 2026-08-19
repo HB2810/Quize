@@ -57,14 +57,31 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         };
       }
     } else {
+      const errName = (exception as Error)?.name ?? "";
+      const errMessage = (exception as Error)?.message ?? String(exception);
+      const isDbError =
+        errName.includes("PrismaClient") ||
+        errMessage.includes("Can't reach database server") ||
+        errMessage.includes("DATABASE_URL");
+
       this.logger.error(
         exception instanceof Error ? exception.stack : String(exception),
       );
-      body = {
-        statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
-        code: "INTERNAL_ERROR",
-        message: "Something went wrong. Please try again.",
-      };
+
+      if (isDbError) {
+        body = {
+          statusCode: HttpStatus.SERVICE_UNAVAILABLE,
+          code: "DATABASE_UNAVAILABLE",
+          message:
+            "Database connection failed. Please ensure DATABASE_URL environment variable is set in Vercel settings and PostgreSQL server is running.",
+        };
+      } else {
+        body = {
+          statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
+          code: "INTERNAL_ERROR",
+          message: "Something went wrong. Please try again.",
+        };
+      }
     }
 
     response.status(body.statusCode).json(body);
