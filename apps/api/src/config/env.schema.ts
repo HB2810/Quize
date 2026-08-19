@@ -15,7 +15,7 @@ export const envSchema = z.object({
     .url()
     .startsWith("postgresql", "DATABASE_URL must be a PostgreSQL URL"),
   API_PORT: z.coerce.number().int().min(1).max(65535).default(4000),
-  WEB_ORIGIN: z.string().url(),
+  WEB_ORIGIN: z.string().url().default("http://localhost:3000"),
   /** Public base URL of this API (share cards, OG images). */
   API_PUBLIC_URL: z.string().url().default("http://localhost:4000"),
   /** Private media storage root (selfies). Never served statically. */
