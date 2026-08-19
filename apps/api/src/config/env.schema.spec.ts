@@ -17,9 +17,10 @@ describe("validateEnv", () => {
     expect(env.API_PORT).toBe(8080);
   });
 
-  it("rejects a missing DATABASE_URL", () => {
+  it("applies default DATABASE_URL when omitted", () => {
     const { DATABASE_URL: _omitted, ...rest } = validEnv;
-    expect(() => validateEnv(rest)).toThrow(/DATABASE_URL/);
+    const env = validateEnv(rest);
+    expect(env.DATABASE_URL).toContain("postgresql://");
   });
 
   it("rejects a non-PostgreSQL DATABASE_URL", () => {

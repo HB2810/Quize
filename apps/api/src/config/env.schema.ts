@@ -12,6 +12,10 @@ export const envSchema = z.object({
   TEST_MODE: z.coerce.boolean().default(false),
   DATABASE_URL: z
     .string()
+    .refine(
+      (url) => url.startsWith("postgresql://") || url.startsWith("postgres://"),
+      { message: "DATABASE_URL must be a PostgreSQL connection string" },
+    )
     .default("postgresql://postgres:postgres@localhost:5432/stavya_awareness"),
   API_PORT: z.coerce.number().int().min(1).max(65535).default(4000),
   WEB_ORIGIN: z.string().url().default("http://localhost:3000"),
