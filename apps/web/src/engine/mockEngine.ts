@@ -172,7 +172,8 @@ function buildStep(session: MockSession): StepPayload {
 
   if (index >= 4 && index <= 9) {
     const qIndex = index - 4;
-    const q = MOCK_QUESTIONS[qIndex] ?? MOCK_QUESTIONS[0];
+    const q = MOCK_QUESTIONS[qIndex] || MOCK_QUESTIONS[0];
+    if (!q) throw new Error("Question missing");
     return {
       type: "QUESTION",
       questionKey: q.key,
@@ -265,7 +266,7 @@ function buildStep(session: MockSession): StepPayload {
         "This is an educational awareness experience by Stavya Spine Hospital, not a medical diagnosis or clinical risk assessment.",
     },
     recognitionEligible: true,
-    recognition: { eligible: true, status: "PENDING" },
+    recognition: { status: "PENDING", hasSelfie: false },
   };
 }
 
@@ -292,7 +293,7 @@ export function submitMockStep(
   let session = sessions[sessionId];
   if (!session) {
     const res = createMockSession();
-    session = sessions[res.sessionId];
+    session = sessions[res.sessionId]!;
   }
 
   let evaluation: AnswerEvaluation | undefined = undefined;
@@ -322,7 +323,6 @@ export function submitMockStep(
   const nextStep = buildStep(session);
 
   return {
-    sessionId: session.sessionId,
     step: nextStep,
     evaluation,
   };
@@ -335,12 +335,11 @@ export function submitMockContact(
   let session = sessions[sessionId];
   if (!session) {
     const res = createMockSession();
-    session = sessions[res.sessionId];
+    session = sessions[res.sessionId]!;
   }
   session.contact = body;
   session.stepIndex += 1;
   return {
-    sessionId: session.sessionId,
     step: buildStep(session),
   };
 }
@@ -350,24 +349,20 @@ export function createMockShare(sessionId: string): CreateShareResponse {
   const answersList = Object.values(session?.answers ?? {});
   const correctCount = answersList.filter((a) => a.wasCorrect).length;
   const publicId = `share-${Date.now()}`;
-
-  let profile = "Bone Health Champion";
-  if (correctCount <= 1) profile = "Just Getting Started";
-  else if (correctCount <= 3) profile = "Curious Learner";
-  else if (correctCount <= 4) profile = "Bone Aware";
-  else if (correctCount === 5) profile = "Bone Smart";
+  const origin =
+    typeof window !== "undefined"
+      ? window.location.origin
+      : "http://localhost:3000";
 
   return {
     publicId,
-    shareUrl: `${typeof window !== "undefined" ? window.location.origin : "http://localhost:3000"}/share/healthy-bones/${publicId}`,
+    shareUrl: `${origin}/share/healthy-bones/${publicId}`,
+    journeyUrl: `${origin}/j/healthy-bones`,
     cards: {
       landscape: "/brand/stavya-logo.png",
       square: "/brand/stavya-logo.png",
+      story: "/brand/stavya-logo.png",
     },
     caption: `I scored ${correctCount}/6 on Stavya's Healthy Bones Journey!\nTake the journey:`,
-    meta: {
-      title: `I scored ${correctCount}/6 on Stavya's Healthy Bones Journey`,
-      description: "How well do you know your bones? Take the awareness journey.",
-    },
   };
 }
